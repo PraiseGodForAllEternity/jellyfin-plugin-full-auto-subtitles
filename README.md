@@ -14,8 +14,13 @@ Requires Jellyfin 10.11 or 12 and a subtitle provider plugin, such as OpenSubtit
    https://raw.githubusercontent.com/PraiseGodForAllEternity/jellyfin-plugin-full-auto-subtitles/main/manifest.json
    ```
 
-2. Install **Full Auto Subtitles** from the **Catalog** and restart Jellyfin.
-3. Install and sign in to a subtitle provider plugin, such as OpenSubtitles.
+2. Go back to **Plugins** and switch the filter from **Installed** to **Available** (or **All**). The page only shows installed plugins at first. Install **Full Auto Subtitles**.
+3. Install a subtitle source too. **[Open Subtitles](https://github.com/jellyfin/jellyfin-plugin-opensubtitles)** is in Jellyfin's own list, under **Subtitles**. It needs a free [opensubtitles.com](https://www.opensubtitles.com) account. Full Auto Subtitles can't download anything without one.
+4. Restart Jellyfin.
+5. Open **Plugins > Open Subtitles > Settings** and enter your opensubtitles.com login.
+6. Each person sets their subtitle language in their own Jellyfin settings, under **Subtitles**.
+
+If Open Subtitles isn't listed, check that Jellyfin's own repository is still there: `https://repo.jellyfin.org/files/plugin/manifest.json`
 
 One link for everyone: Jellyfin installs the build for its own version (10.11 or 12) and keeps it updated.
 
