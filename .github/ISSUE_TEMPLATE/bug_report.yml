@@ -1,0 +1,17 @@
+name: Bug report
+description: Something isn't working
+labels: [bug]
+body:
+  - type: input
+    attributes: { label: Plugin version }
+    validations: { required: true }
+  - type: input
+    attributes: { label: Jellyfin version and operating system }
+    validations: { required: true }
+  - type: input
+    attributes: { label: App or device, placeholder: "Web, Roku, Android TV..." }
+  - type: textarea
+    attributes: { label: What happened, description: "What did you expect instead?" }
+    validations: { required: true }
+  - type: textarea
+    attributes: { label: Recent activity and log lines, description: Remove anything private., render: text }
