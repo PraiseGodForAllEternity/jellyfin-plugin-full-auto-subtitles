@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Full Auto Subtitles</title></head>
+<body>
+<div id="FullAutoSubtitlesPage" data-role="page" class="page type-interior pluginConfigurationPage" data-require="emby-input,emby-button,emby-select,emby-checkbox">
+<div data-role="content"><div class="content-primary">
+    <h2 class="sectionTitle">Full Auto Subtitles</h2>
+    <p>Fetches missing subtitles for what people are about to watch, in each person's subtitle language. Needs a subtitle provider such as the OpenSubtitles plugin.</p>
+    <div id="SrStatus"></div>
+    <button is="emby-button" type="button" id="SrRun" class="raised emby-button"><span>Check now</span></button>
+
+    <form id="SrForm">
+        <h3 class="sectionTitle">Settings</h3>
+        <div class="checkboxContainer"><label><input type="checkbox" is="emby-checkbox" id="Enabled" /><span>Fetch subtitles automatically</span></label></div>
+        <div class="inputContainer"><label class="inputLabel" for="DailyCap">Automatic downloads per day</label><input is="emby-input" type="number" id="DailyCap" min="0" max="1000" />
+            <div class="fieldDescription">Shared by everyone. A free OpenSubtitles account allows about 20; keep a few for manual downloads.</div></div>
+        <div class="inputContainer"><label class="inputLabel" for="EpisodesAhead">Episodes to prepare ahead</label><input is="emby-input" type="number" id="EpisodesAhead" min="0" max="5" /></div>
+        <div class="inputContainer"><label class="inputLabel" for="ActiveWithinDays">Only for people active in the last (days)</label><input is="emby-input" type="number" id="ActiveWithinDays" min="1" max="365" /></div>
+        <div class="inputContainer"><label class="inputLabel" for="RetryAfterDays">Search again after finding nothing (days)</label><input is="emby-input" type="number" id="RetryAfterDays" min="1" max="90" /></div>
+        <div class="selectContainer"><label class="selectLabel" for="HearingImpaired">Hearing-impaired subtitles</label>
+            <select is="emby-select" id="HearingImpaired"><option value="NoPreference">No preference</option><option value="Prefer">Prefer</option><option value="Avoid">Avoid when possible</option></select></div>
+        <div class="checkboxContainer"><label><input type="checkbox" is="emby-checkbox" id="IncludeFavoriteMovies" /><span>Also prepare favorite movies</span></label></div>
+        <div class="checkboxContainer"><label><input type="checkbox" is="emby-checkbox" id="ExactMatchOnly" /><span>Only use exact matches for the file</span></label></div>
+        <div class="checkboxContainer"><label><input type="checkbox" is="emby-checkbox" id="AllowMachineTranslated" /><span>Allow machine-translated subtitles</span></label></div>
+        <div class="checkboxContainer"><label><input type="checkbox" is="emby-checkbox" id="ImageSubtitlesCount" /><span>Picture-based subtitles count as having subtitles</span></label></div>
+        <button is="emby-button" type="submit" class="raised button-submit block emby-button"><span>Save</span></button>
+    </form>
+
+    <h3 class="sectionTitle" style="margin-top:2em">Fix timing</h3>
+    <p>Makes a corrected copy of a text subtitle. Your video and the original subtitle aren't changed.</p>
+    <div class="inputContainer"><label class="inputLabel" for="SrSearch">Movie or episode name</label><input is="emby-input" type="text" id="SrSearch" autocomplete="off" /></div>
+    <div id="SrResults"></div>
+    <div id="SrFix" style="display:none">
+        <h4 id="SrTitle"></h4>
+        <div class="selectContainer"><label class="selectLabel" for="SrTrack">Subtitle to fix</label><select is="emby-select" id="SrTrack"></select></div>
+        <div class="selectContainer"><label class="selectLabel" for="SrRef">Compare with</label><select is="emby-select" id="SrRef"></select></div>
+        <div id="SrManual" style="display:none">
+            <div class="inputContainer"><label class="inputLabel" for="SrShift">Shift in seconds (positive shows it later)</label><input is="emby-input" type="number" step="0.1" id="SrShift" value="0" /></div>
+            <div class="inputContainer"><label class="inputLabel" for="SrSpeed">Speed (1 is unchanged)</label><input is="emby-input" type="number" step="0.0001" id="SrSpeed" value="1" /></div>
+        </div>
+        <button is="emby-button" type="button" id="SrPreview" class="raised emby-button"><span>Preview</span></button>
+        <button is="emby-button" type="button" id="SrApply" class="raised button-submit emby-button" style="display:none"><span>Save corrected copy</span></button>
+        <div id="SrOut" style="margin-top:1em"></div>
+    </div>
+
+    <h3 class="sectionTitle" style="margin-top:2em">Recent activity</h3>
+    <div id="SrHistory"></div>
+</div></div>
+<script type="text/javascript">
+(function () {
+    var id = '73ea3279-6311-43d9-ab10-94331164ddd6';
+    var page = document.querySelector('#FullAutoSubtitlesPage');
+    var q = function (s) { return page.querySelector(s); };
+    var numbers = ['DailyCap', 'EpisodesAhead', 'ActiveWithinDays', 'RetryAfterDays'];
+    var checks = ['Enabled', 'IncludeFavoriteMovies', 'ExactMatchOnly', 'AllowMachineTranslated', 'ImageSubtitlesCount'];
+    var hiNames = ['NoPreference', 'Prefer', 'Avoid'];
+    var itemId = null, plan = null, work = 0;
+
+    // Everything from the library is shown as plain text, never as HTML.
+    function el(tag, text, style) { var e = document.createElement(tag); e.textContent = text || ''; if (style) { e.style.cssText = style; } return e; }
+    function url(p) { return ApiClient.getUrl('FullAutoSubtitles/' + p); }
+    function post(p, body) {
+        return ApiClient.fetch({ type: 'POST', url: url(p), data: JSON.stringify(body || {}), contentType: 'application/json', dataType: body ? 'json' : undefined });
+    }
+    function problem(r) {
+        if (r && r.text) { return r.text().then(function (t) { try { t = JSON.parse(t); } catch (e) { /* plain text */ } return typeof t === 'string' && t ? t : 'That didn\'t work.'; }); }
+        return Promise.resolve('That didn\'t work.');
+    }
+
+    function refresh() {
+        return ApiClient.getJSON(url('Status')).then(function (s) {
+            var box = q('#SrStatus'); box.textContent = '';
+            box.appendChild(el('p', 'Automatic downloads today: ' + s.Used + ' of ' + s.Cap + (s.Paused ? ' (paused until tomorrow, the provider\'s limit is used up)' : '')));
+            box.appendChild(el('p', s.Providers.length ? 'Providers: ' + s.Providers.join(', ') : 'No subtitle provider is installed, so nothing can be fetched. Install OpenSubtitles first.'));
+            var list = q('#SrHistory'); list.textContent = '';
+            if (!s.History.length) { list.appendChild(el('p', 'Nothing yet.')); }
+            s.History.forEach(function (h) {
+                var row = el('div', '', 'padding:.4em 0;border-bottom:1px solid rgba(128,128,128,.3)');
+                row.appendChild(el('strong', h.Result + ': '));
+                row.appendChild(el('span', h.Title + (h.Language ? ' (' + h.Language + ')' : '')));
+                row.appendChild(el('div', h.Detail + '  ' + new Date(h.Time).toLocaleString(), 'opacity:.7'));
+                if (h.CanUndo) {
+                    var b = el('button', 'Undo'); b.type = 'button'; b.className = 'raised emby-button';
+                    b.addEventListener('click', function () { b.disabled = true; post('Undo/' + h.Id).then(refresh, function (r) { b.disabled = false; problem(r).then(function (t) { Dashboard.alert(t); }); }); });
+                    row.appendChild(b);
+                }
+                list.appendChild(row);
+            });
+        });
+    }
+
+    page.addEventListener('pageshow', function () {
+        ApiClient.getPluginConfiguration(id).then(function (c) {
+            numbers.forEach(function (n) { q('#' + n).value = c[n]; });
+            checks.forEach(function (n) { q('#' + n).checked = !!c[n]; });
+            q('#HearingImpaired').value = typeof c.HearingImpaired === 'number' ? hiNames[c.HearingImpaired] : c.HearingImpaired;
+        });
+        refresh();
+    });
+
+    q('#SrRun').addEventListener('click', function () { post('Run').then(function () { setTimeout(refresh, 4000); }); });
+
+    q('#SrForm').addEventListener('submit', function (e) {
+        e.preventDefault();
+        ApiClient.getPluginConfiguration(id).then(function (c) {
+            numbers.forEach(function (n) { c[n] = parseInt(q('#' + n).value, 10) || 0; });
+            checks.forEach(function (n) { c[n] = q('#' + n).checked; });
+            c.HearingImpaired = q('#HearingImpaired').value;
+            return ApiClient.updatePluginConfiguration(id, c).then(function (r) { Dashboard.processPluginConfigurationUpdateResult(r); refresh(); });
+        });
+        return false;
+    });
+
+    var timer = null;
+    q('#SrSearch').addEventListener('input', function () {
+        clearTimeout(timer);
+        timer = setTimeout(function () {
+            var term = q('#SrSearch').value.trim(), out = q('#SrResults');
+            out.textContent = '';
+            if (term.length < 2) { return; }
+            ApiClient.getItems(ApiClient.getCurrentUserId(), { SearchTerm: term, IncludeItemTypes: 'Movie,Episode', Recursive: true, Limit: 8 }).then(function (r) {
+                out.textContent = '';
+                r.Items.forEach(function (i) {
+                    var b = el('button', (i.SeriesName ? i.SeriesName + ' - ' : '') + i.Name + (i.ProductionYear ? ' (' + i.ProductionYear + ')' : ''));
+                    b.type = 'button'; b.className = 'raised emby-button'; b.style.cssText = 'display:block;margin:.3em 0';
+                    b.addEventListener('click', function () { open(i.Id, b.textContent); });
+                    out.appendChild(b);
+                });
+                if (!r.Items.length) { out.textContent = 'No matches.'; }
+            });
+        }, 300);
+    });
+
+    function option(sel, value, text) { var o = el('option', text); o.value = value; sel.appendChild(o); }
+    function changed() { work++; plan = null; q('#SrApply').style.display = 'none'; q('#SrOut').textContent = ''; q('#SrManual').style.display = q('#SrRef').value === 'manual' ? '' : 'none'; }
+
+    function open(newId, title) {
+        itemId = newId;
+        ApiClient.getJSON(url('Tracks/' + newId)).then(function (tracks) {
+            if (itemId !== newId) { return; }
+            var text = tracks.filter(function (t) { return t.IsText; });
+            q('#SrFix').style.display = ''; q('#SrTitle').textContent = title;
+            q('#SrTrack').textContent = ''; q('#SrRef').textContent = '';
+            text.forEach(function (t) { option(q('#SrTrack'), t.Index, t.Label); option(q('#SrRef'), t.Index, 'This video\'s track: ' + t.Label); });
+            option(q('#SrRef'), 'download', 'An exact match downloaded now (uses 1 download)');
+            option(q('#SrRef'), 'manual', 'Nothing, I\'ll type the correction');
+            q('#SrRef').value = text.length > 1 ? text[1].Index : 'manual';
+            changed();
+            q('#SrPreview').disabled = !text.length;
+            if (!text.length) { q('#SrOut').textContent = 'No text subtitles to fix.'; }
+        });
+    }
+
+    ['#SrTrack', '#SrRef', '#SrShift', '#SrSpeed'].forEach(function (s) { q(s).addEventListener('change', changed); });
+
+    q('#SrPreview').addEventListener('click', function () {
+        changed();
+        var mine = work, forItem = itemId, ref = q('#SrRef').value, body = { Track: parseInt(q('#SrTrack').value, 10) };
+        if (ref === 'manual') { body.Shift = parseFloat(q('#SrShift').value) || 0; body.Speed = parseFloat(q('#SrSpeed').value) || 1; } else if (ref !== 'download') { body.Reference = parseInt(ref, 10); }
+        q('#SrOut').textContent = 'Working...';
+        post('Fix/' + forItem + '/Preview', body).then(function (a) {
+            if (mine !== work) { return; }
+            var good = a.Verdict === 'Fixed';
+            q('#SrOut').textContent = a.Message + (good ? ' Shift ' + a.Shift.toFixed(2) + ' s, speed ' + a.Speed.toFixed(4) + '.' : ' Nothing will be changed.') + (ref === 'manual' ? '' : ' (' + Math.round(a.Match * 100) + '% of lines match)');
+            if (good) { plan = { item: forItem, body: { Track: body.Track, Label: q('#SrTrack').selectedOptions[0].textContent, Shift: a.Shift, Speed: a.Speed } }; q('#SrApply').style.display = ''; }
+            refresh();
+        }, function (r) { problem(r).then(function (t) { if (mine === work) { q('#SrOut').textContent = t; } }); });
+    });
+
+    q('#SrApply').addEventListener('click', function () {
+        if (!plan) { return; }
+        var p = plan; changed(); q('#SrOut').textContent = 'Saving...';
+        post('Fix/' + p.item + '/Apply', p.body).then(function () { var t = q('#SrTitle').textContent; open(p.item, t); setTimeout(function () { q('#SrOut').textContent = 'Saved as a new "synced" subtitle.'; }, 600); refresh(); },
+            function (r) { problem(r).then(function (t) { q('#SrOut').textContent = t; }); });
+    });
+})();
+</script>
+</div>
+</body>
+</html>
