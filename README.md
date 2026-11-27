@@ -17,6 +17,7 @@
 ## Features
 
 - **Ready before you watch:** covers Continue Watching, Next Up, the next episodes and favorite movies.
+- **Next film in a series:** while you watch a movie, the next one in its series gets ready too (from your collections or the movie's TMDb series). Works great with [Up Next](https://github.com/PraiseGodForAllEternity/jellyfin-plugin-upnext), and fine without it.
 - **Everyone's own language:** uses each person's subtitle language from their Jellyfin settings.
 - **Better matches first:** prefers subtitles made for your exact file, and skips forced-only and machine-translated ones.
 - **Shares your daily downloads:** one limit for the server, split fairly between users.

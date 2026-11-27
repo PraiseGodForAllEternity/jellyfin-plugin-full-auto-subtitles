@@ -12,6 +12,7 @@ public class ServiceRegistrator : IPluginServiceRegistrator
         services.AddSingleton<StateStore>();
         services.AddSingleton<SubtitleNeeds>();
         services.AddSingleton<TrackService>();
+        services.AddSingleton<FilmSeries>();
         services.AddSingleton<TimingService>();
         services.AddSingleton<FetchService>();
         services.AddHostedService(p => p.GetRequiredService<FetchService>());

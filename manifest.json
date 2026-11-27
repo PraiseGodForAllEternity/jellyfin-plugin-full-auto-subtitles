@@ -9,6 +9,22 @@
     "imageUrl":  "https://raw.githubusercontent.com/PraiseGodForAllEternity/jellyfin-plugin-full-auto-subtitles/main/images/logo.png",
     "versions":  [
                      {
+                         "version":  "1.1.0.12",
+                         "changelog":  "New: the next film in a series gets subtitles ready while you watch the one before it.",
+                         "targetAbi":  "12.0.0.0",
+                         "sourceUrl":  "https://github.com/PraiseGodForAllEternity/jellyfin-plugin-full-auto-subtitles/releases/download/v1.1.0.0/full-auto-subtitles_1.1.0.12.zip",
+                         "checksum":  "482dd571ae68e52d68b53e267b4ec1f6",
+                         "timestamp":  "2026-11-27T12:06:50Z"
+                     },
+                     {
+                         "version":  "1.1.0.0",
+                         "changelog":  "New: the next film in a series gets subtitles ready while you watch the one before it.",
+                         "targetAbi":  "10.11.0.0",
+                         "sourceUrl":  "https://github.com/PraiseGodForAllEternity/jellyfin-plugin-full-auto-subtitles/releases/download/v1.1.0.0/full-auto-subtitles_1.1.0.0.zip",
+                         "checksum":  "3b2d829c010585113639678099fd3077",
+                         "timestamp":  "2026-11-27T12:06:50Z"
+                     },
+                     {
                          "version":  "1.0.0.12",
                          "changelog":  "First version: fetches missing subtitles ahead of time, and fixes the timing of text subtitles.",
                          "targetAbi":  "12.0.0.0",

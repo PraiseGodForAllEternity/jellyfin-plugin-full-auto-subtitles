@@ -35,12 +35,15 @@ public sealed class FetchService : IHostedService, IDisposable
     private readonly TrackService _tracks;
     private readonly SubtitleNeeds _needs;
     private readonly StateStore _state;
+    private readonly FilmSeries _series;
     private readonly ILogger<FetchService> _logger;
+    private readonly SemaphoreSlim _oneAtATime = new(1, 1);
+    private readonly Dictionary<(Guid User, Guid Item), DateTime> _seriesDone = new();
     private readonly SemaphoreSlim _running = new(1, 1);
     private readonly CancellationTokenSource _stop = new();
     private int _pending;
 
-    public FetchService(ISessionManager sessions, ILibraryManager library, ITVSeriesManager tv, ISubtitleManager subtitles, TrackService tracks, SubtitleNeeds needs, StateStore state, ILogger<FetchService> logger)
+    public FetchService(ISessionManager sessions, ILibraryManager library, ITVSeriesManager tv, ISubtitleManager subtitles, TrackService tracks, SubtitleNeeds needs, StateStore state, FilmSeries series, ILogger<FetchService> logger)
     {
         _sessions = sessions;
         _library = library;
@@ -49,18 +52,21 @@ public sealed class FetchService : IHostedService, IDisposable
         _tracks = tracks;
         _needs = needs;
         _state = state;
+        _series = series;
         _logger = logger;
     }
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
         _sessions.PlaybackStopped += OnStopped;
+        _sessions.PlaybackProgress += OnProgress;
         return Task.CompletedTask;
     }
 
     public Task StopAsync(CancellationToken cancellationToken)
     {
         _sessions.PlaybackStopped -= OnStopped;
+        _sessions.PlaybackProgress -= OnProgress;
         _stop.Cancel();
         return Task.CompletedTask;
     }
@@ -69,6 +75,7 @@ public sealed class FetchService : IHostedService, IDisposable
     {
         _stop.Dispose();
         _running.Dispose();
+        _oneAtATime.Dispose();
     }
 
     public async Task Run(IProgress<double>? progress, CancellationToken token)
@@ -157,6 +164,17 @@ public sealed class FetchService : IHostedService, IDisposable
             starts.AddRange(next.OfType<Episode>());
         }
 
+        if (config.PrepareNextInSeries)
+        {
+            foreach (var movie in items.OfType<Movie>().ToList())
+            {
+                if (_series.Next(user, movie) is { } next)
+                {
+                    items.Add(next);
+                }
+            }
+        }
+
         foreach (var episode in starts)
         {
             items.AddRange(Following(user, episode, ahead));
@@ -178,20 +196,22 @@ public sealed class FetchService : IHostedService, IDisposable
         var seen = new HashSet<Guid>();
         foreach (var found in items)
         {
-            if (!seen.Add(found.Id)
-                || _library.GetItemById(found.Id) is not Video { IsFileProtocol: true, IsVirtualItem: false, IsShortcut: false } item
-                || item is not (Movie or Episode)
-                || !item.IsVisibleStandalone(user)
-                || !_needs.Needs(_tracks.Streams(item), language, user.SubtitleMode, config))
+            if (seen.Add(found.Id) && Candidate(user, found, language, config) is { } item)
             {
-                continue;
+                result.Enqueue((item, language));
             }
-
-            result.Enqueue((item, language));
         }
 
         return result;
     }
+
+    private Video? Candidate(User user, BaseItem found, string language, PluginConfiguration config)
+        => _library.GetItemById(found.Id) is Video { IsFileProtocol: true, IsVirtualItem: false, IsShortcut: false } item
+            && item is Movie or Episode
+            && item.IsVisibleStandalone(user)
+            && _needs.Needs(_tracks.Streams(item), language, user.SubtitleMode, config)
+                ? item
+                : null;
 
     private static IEnumerable<Episode> Following(User user, Episode episode, int count)
     {
@@ -209,6 +229,19 @@ public sealed class FetchService : IHostedService, IDisposable
 
     // False means stop for now (allowance used up).
     private async Task<bool> Fetch(Video item, string language, PluginConfiguration config, CancellationToken token)
+    {
+        await _oneAtATime.WaitAsync(token).ConfigureAwait(false);
+        try
+        {
+            return await FetchOne(item, language, config, token).ConfigureAwait(false);
+        }
+        finally
+        {
+            _oneAtATime.Release();
+        }
+    }
+
+    private async Task<bool> FetchOne(Video item, string language, PluginConfiguration config, CancellationToken token)
     {
         var key = MissKey(item, language);
         var cap = Math.Clamp(config.DailyCap, 0, 1000);
@@ -318,6 +351,53 @@ public sealed class FetchService : IHostedService, IDisposable
     internal static string Title(BaseItem item) => item is Episode e
         ? $"{e.SeriesName} S{e.ParentIndexNumber:00}E{e.IndexNumber:00} {e.Name}"
         : item.Name + (item.ProductionYear is { } y ? $" ({y})" : string.Empty);
+
+    // Most of the way through a film: get the next one in its series ready.
+    private void OnProgress(object? sender, PlaybackProgressEventArgs e)
+    {
+        var config = Plugin.Config;
+        if (!config.Enabled || !config.PrepareNextInSeries || e.Item is not Movie movie || e.Users is not { Count: > 0 } users
+            || movie.RunTimeTicks is not > 0 || e.PlaybackPositionTicks is not { } position || position < movie.RunTimeTicks * 0.7)
+        {
+            return;
+        }
+
+        lock (_seriesDone)
+        {
+            foreach (var old in _seriesDone.Where(d => DateTime.UtcNow - d.Value > TimeSpan.FromHours(6)).Select(d => d.Key).ToList())
+            {
+                _seriesDone.Remove(old);
+            }
+
+            if (!_seriesDone.TryAdd((users[0].Id, movie.Id), DateTime.UtcNow))
+            {
+                return;
+            }
+        }
+
+        var user = users[0];
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var language = _needs.Known(user.SubtitleLanguagePreference);
+                if (language is null || user.SubtitleMode is SubtitlePlaybackMode.None or SubtitlePlaybackMode.OnlyForced
+                    || _series.Next(user, movie) is not { } next || Candidate(user, next, language, config) is not { } item)
+                {
+                    return;
+                }
+
+                await Fetch(item, language, config, _stop.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Full Auto Subtitles: couldn't prepare the next film after {Name}", movie.Name);
+            }
+        });
+    }
 
     private void OnStopped(object? sender, PlaybackStopEventArgs e)
     {

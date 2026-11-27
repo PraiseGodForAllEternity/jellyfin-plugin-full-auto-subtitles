@@ -20,6 +20,7 @@
         <div class="selectContainer"><label class="selectLabel" for="HearingImpaired">Hearing-impaired subtitles</label>
             <select is="emby-select" id="HearingImpaired"><option value="NoPreference">No preference</option><option value="Prefer">Prefer</option><option value="Avoid">Avoid when possible</option></select></div>
         <div class="checkboxContainer"><label><input type="checkbox" is="emby-checkbox" id="IncludeFavoriteMovies" /><span>Also prepare favorite movies</span></label></div>
+        <div class="checkboxContainer"><label><input type="checkbox" is="emby-checkbox" id="PrepareNextInSeries" /><span>Prepare the next film in a series while the one before plays</span></label></div>
         <div class="checkboxContainer"><label><input type="checkbox" is="emby-checkbox" id="ExactMatchOnly" /><span>Only use exact matches for the file</span></label></div>
         <div class="checkboxContainer"><label><input type="checkbox" is="emby-checkbox" id="AllowMachineTranslated" /><span>Allow machine-translated subtitles</span></label></div>
         <div class="checkboxContainer"><label><input type="checkbox" is="emby-checkbox" id="ImageSubtitlesCount" /><span>Picture-based subtitles count as having subtitles</span></label></div>
@@ -52,7 +53,7 @@
     var page = document.querySelector('#FullAutoSubtitlesPage');
     var q = function (s) { return page.querySelector(s); };
     var numbers = ['DailyCap', 'EpisodesAhead', 'ActiveWithinDays', 'RetryAfterDays'];
-    var checks = ['Enabled', 'IncludeFavoriteMovies', 'ExactMatchOnly', 'AllowMachineTranslated', 'ImageSubtitlesCount'];
+    var checks = ['Enabled', 'IncludeFavoriteMovies', 'PrepareNextInSeries', 'ExactMatchOnly', 'AllowMachineTranslated', 'ImageSubtitlesCount'];
     var hiNames = ['NoPreference', 'Prefer', 'Avoid'];
     var itemId = null, plan = null, work = 0;
 

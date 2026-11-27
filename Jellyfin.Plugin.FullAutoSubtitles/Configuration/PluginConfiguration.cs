@@ -24,6 +24,9 @@ public class PluginConfiguration : BasePluginConfiguration
 
     public bool IncludeFavoriteMovies { get; set; } = true;
 
+    /// <summary>Gets or sets a value indicating whether the next film in a series is prepared while the one before plays.</summary>
+    public bool PrepareNextInSeries { get; set; } = true;
+
     public bool ExactMatchOnly { get; set; }
 
     public bool AllowMachineTranslated { get; set; }
