@@ -3,7 +3,10 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using System.Threading.Tasks;
+using Jellyfin.Database.Implementations.Entities;
 using MediaBrowser.Common.Configuration;
+using MediaBrowser.Model.Activity;
 using Microsoft.Extensions.Logging;
 
 namespace Jellyfin.Plugin.FullAutoSubtitles.Services;
@@ -49,11 +52,13 @@ public class StateStore
     private readonly object _lock = new();
     private readonly string _file;
     private readonly ILogger<StateStore> _logger;
+    private readonly IActivityManager _activity;
     private State _state = new();
 
-    public StateStore(IApplicationPaths paths, ILogger<StateStore> logger)
+    public StateStore(IApplicationPaths paths, IActivityManager activity, ILogger<StateStore> logger)
     {
         _logger = logger;
+        _activity = activity;
         _file = Path.Combine(paths.PluginConfigurationsPath, "FullAutoSubtitles.state.json");
         try
         {
@@ -110,11 +115,38 @@ public class StateStore
         }
     }
 
-    public void Log(HistoryEntry entry) => Change(s =>
+    public void Log(HistoryEntry entry)
     {
-        s.History.Insert(0, entry);
-        return true;
-    });
+        Change(s =>
+        {
+            s.History.Insert(0, entry);
+            return true;
+        });
+
+        // Things that changed a title also go to Jellyfin's own Activity list (Dashboard).
+        if (entry.Result is "Added" or "Timing fixed")
+        {
+            var what = entry.Result == "Added" ? "Subtitles added" : "Subtitle timing fixed";
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await _activity.CreateAsync(new ActivityLog(
+                        $"Full Auto Subtitles: {what} for {entry.Title}" + (entry.Language.Length > 0 ? $" ({entry.Language})" : string.Empty),
+                        "FullAutoSubtitles",
+                        Guid.Empty)
+                    {
+                        ShortOverview = entry.Detail,
+                        ItemId = entry.ItemId.ToString("N")
+                    }).ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogDebug(ex, "Full Auto Subtitles: couldn't add to the Activity list");
+                }
+            });
+        }
+    }
 
     /// <summary>Takes one download from today's allowance, or says no.</summary>
     public bool TryTakeDownload(int cap) => Change(s =>

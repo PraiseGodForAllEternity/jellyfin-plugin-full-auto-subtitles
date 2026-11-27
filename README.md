@@ -22,6 +22,7 @@
 - **Better matches first:** prefers subtitles made for your exact file, and skips forced-only and machine-translated ones.
 - **Shares your daily downloads:** one limit for the server, split fairly between users.
 - **Fix timing:** corrects subtitles that are early, late or drifting. The original stays, and you can undo it.
+- **Shows in Jellyfin's Activity list:** every subtitle it adds or fixes is listed under Dashboard > Activity.
 - **Keeps your track choices:** saved audio and subtitle choices still point at the right track after a subtitle is added.
 
 ## Screenshots
