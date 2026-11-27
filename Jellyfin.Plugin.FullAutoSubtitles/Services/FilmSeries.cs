@@ -48,6 +48,21 @@ public class FilmSeries
         return null;
     }
 
+    /// <summary>Whether two movies belong to the same film series, as this user sees them.</summary>
+    public bool Same(User user, Movie movie, BaseItem other)
+    {
+        try
+        {
+            return Series(user, movie).Any(films => films.Any(f => f.Id.Equals(other.Id)));
+        }
+        catch (Exception ex)
+        {
+            // When unsure, say yes: the caller then waits instead of risking a wrong track.
+            _logger.LogDebug(ex, "Full Auto Subtitles: couldn't read the series for {Name}", movie.Name);
+            return true;
+        }
+    }
+
     private IEnumerable<List<Movie>> Series(User user, Movie movie)
     {
         // Collections first, smallest first: a trilogy beats a 40-film franchise list.

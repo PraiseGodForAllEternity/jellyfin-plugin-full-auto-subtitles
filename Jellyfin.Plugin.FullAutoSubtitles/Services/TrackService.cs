@@ -5,11 +5,13 @@ using System.Threading;
 using System.Threading.Tasks;
 using Jellyfin.Database.Implementations.Entities;
 using MediaBrowser.Controller.Entities;
+using MediaBrowser.Controller.Entities.Movies;
 using MediaBrowser.Controller.Entities.TV;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.Providers;
 using MediaBrowser.Controller.Session;
 using MediaBrowser.Model.Entities;
+using MediaBrowser.Model.Session;
 using MediaBrowser.Model.IO;
 using Microsoft.Extensions.Logging;
 
@@ -38,9 +40,10 @@ public class TrackService
     private readonly IMediaSourceManager _sources;
     private readonly ILibraryManager _library;
     private readonly IFileSystem _fileSystem;
+    private readonly FilmSeries _series;
     private readonly ILogger<TrackService> _logger;
 
-    public TrackService(ISessionManager sessions, IUserManager users, IUserDataManager userData, IMediaSourceManager sources, ILibraryManager library, IFileSystem fileSystem, ILogger<TrackService> logger)
+    public TrackService(ISessionManager sessions, IUserManager users, IUserDataManager userData, IMediaSourceManager sources, ILibraryManager library, IFileSystem fileSystem, FilmSeries series, ILogger<TrackService> logger)
     {
         _sessions = sessions;
         _users = users;
@@ -48,6 +51,7 @@ public class TrackService
         _sources = sources;
         _library = library;
         _fileSystem = fileSystem;
+        _series = series;
         _logger = logger;
     }
 
@@ -95,6 +99,24 @@ public class TrackService
                 if (playing.Id.Equals(item.Id)
                     || (watched is not null && Group(watched).Equals(group))
                     || string.Equals(session.PlayState?.MediaSourceId, item.Id.ToString("N"), StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+
+                // Apps can hold a queued title's track numbers from before it starts. (Jellyfin 12
+                // only records the queue when playback stops, so this can't be the only check.)
+                var queue = session.NowPlayingQueue ?? Array.Empty<QueueItem>();
+                if (queue.Any(q => q.Id.Equals(item.Id)))
+                {
+                    return true;
+                }
+
+                // Simple apps, like the official Roku app, never tell the server their queue and may
+                // be playing a whole collection in order. Leave the rest of that film series alone
+                // until they stop. Apps that accept remote control (web, phones, Android TV) load each
+                // title fresh when it starts.
+                if (IsSimpleApp(session) && watched is Movie movie && item is Movie
+                    && _users.GetUserById(session.UserId) is { } viewer && _series.Same(viewer, movie, item))
                 {
                     return true;
                 }
@@ -171,6 +193,11 @@ public class TrackService
 
         return map;
     }
+
+    private static bool IsSimpleApp(SessionInfo session)
+        => session.Capabilities is not { SupportsMediaControl: true }
+            || (session.Client?.Contains("roku", StringComparison.OrdinalIgnoreCase) ?? false)
+            || (session.Client?.Contains("jellyrock", StringComparison.OrdinalIgnoreCase) ?? false);
 
     private static Guid Group(BaseItem item) => item is Episode { SeriesId: var id } && !id.Equals(Guid.Empty) ? id : item.Id;
 
